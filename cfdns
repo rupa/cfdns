@@ -131,7 +131,7 @@ def update_record(domain, rec_id, data):
 def delete_record(domain, rec_id):
     data = {'a': 'rec_delete', 'z': domain, 'id': str(rec_id)}
     resp = get(data)
-    return resp
+    return json.dumps(resp, indent=4, sort_keys=True)
 
 def print_records(domain, typ=None, name=None):
     for record in get_records(domain, typ, name):
