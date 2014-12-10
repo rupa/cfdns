@@ -172,7 +172,12 @@ if __name__ == '__main__':
         metavar=('DOMAIN', 'NAME'),
         help='update A record for NAME.DOMAIN'
     )
-    parser.add_argument('--delete', metavar='ID', help='delete ID')
+    parser.add_argument(
+        '--delete',
+        nargs=2,
+        metavar=('DOMAIN', 'ID'),
+        help='delete ID from DOMAIN'
+    )
     parser.add_argument(
         '--list',
         metavar='DOMAIN',
@@ -197,7 +202,7 @@ if __name__ == '__main__':
     no_args = True
     if args.delete:
         no_args = False
-        print delete_record(args.plist[0], args.plist[1])
+        print delete_record(args.delete[0], args.delete[1])
     if args.ddns:
         no_args = False
         ddns(args.ddns[0], args.ddns[1])
