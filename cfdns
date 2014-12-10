@@ -50,7 +50,7 @@ NM_SCRIPT = '''
 
 export CLOUDFLARE_API={0}
 export CLOUDFLARE_EMAIL={1}
-[ "$2" = "up" ] && {2}/cfdns --ddns {3} {4} &
+[ "$2" = "up" ] && nohup {2}/cfdns --ddns {3} {4} &
 '''
 
 def wan_ip():
@@ -87,7 +87,7 @@ def get_records(domain, typ=None, name=None):
         print ex
         yield resp
     else:
-        for record in sorted(records, key=lambda x: x['name']):
+        for record in sorted(records, key=lambda x: x['content']):
             if typ and record['type'] != typ:
                 continue
             if name and record['display_name'] != name:
@@ -167,34 +167,45 @@ if __name__ == '__main__':
         description=__doc__,
     )
     parser.add_argument(
-        '--ddns', nargs=2, metavar=('DOMAIN', 'NAME'),
+        '--ddns',
+        nargs=2,
+        metavar=('DOMAIN', 'NAME'),
         help='update A record for NAME.DOMAIN'
     )
+    parser.add_argument('--delete', metavar='ID', help='delete ID')
     parser.add_argument(
-        '--delete', metavar='ID', help='delete ID'
+        '--list',
+        metavar='DOMAIN',
+        help='list A records for DOMAIN'
     )
     parser.add_argument(
-        '--list', metavar='DOMAIN', help='list A records for DOMAIN'
-    )
-    parser.add_argument(
-        '--plist', nargs=2, metavar=('DOMAIN', 'NAME'),
+        '--plist',
+        nargs=2,
+        metavar=('DOMAIN', 'NAME'),
         help='print launchd plist'
     )
     parser.add_argument(
-        '--nm', nargs=2, metavar=('DOMAIN', 'NAME'),
+        '--nm',
+        nargs=2,
+        metavar=('DOMAIN', 'NAME'),
         help='print networkmanager script'
     )
     args = parser.parse_args()
 
     cwd = os.path.abspath(os.path.dirname(__file__))
 
-    if args.list:
-        print_records(args.list, 'A')
-    elif args.ddns:
-        ddns(args.ddns[0], args.ddns[1])
-    elif args.delete:
+    no_args = True
+    if args.delete:
+        no_args = False
         print delete_record(args.plist[0], args.plist[1])
-    elif args.plist:
+    if args.ddns:
+        no_args = False
+        ddns(args.ddns[0], args.ddns[1])
+    if args.list:
+        no_args = False
+        print_records(args.list, 'A')
+    if args.plist:
+        no_args = False
         print PLIST.format(
             '.'.join(reversed(args.plist[0].split('.'))),
             os.environ.get('CLOUDFLARE_API'),
@@ -203,13 +214,15 @@ if __name__ == '__main__':
             args.plist[0],
             args.plist[1],
         ).strip()
-    elif args.nm:
+    if args.nm:
+        no_args = False
         print NM_SCRIPT.format(
             os.environ.get('CLOUDFLARE_API'),
             os.environ.get('CLOUDFLARE_EMAIL'),
             cwd,
-            args.plist[0],
-            args.plist[1],
+            args.nm[0],
+            args.nm[1],
         ).strip()
-    else:
+
+    if no_args:
         parser.print_help()
