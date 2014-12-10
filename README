@@ -1,6 +1,6 @@
 Dynamic DNS with Cloudflare
 
-Have a domain set up using Cloudflare nameservers.
+Have a domain pointed at Cloudflare nameservers.
 Have API key and email exported as CLOUDFLARE_API and CLOUDFLARE_EMAIL.
 
 OSX:
