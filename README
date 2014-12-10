@@ -1,0 +1,22 @@
+Dynamic DNS with Cloudflare
+
+Have a domain set up using Cloudflare nameservers.
+Have API key and email exported as CLOUDFLARE_API and CLOUDFLARE_EMAIL.
+
+OSX:
+
+    * Use launchd to trigger update when network location changes:
+
+        /path/to/cfdns --plist DOMAIN NAME > ~/Library/LaunchAgents/location_change.plist
+        launchctl load ~/Library/LaunchAgents/location_change.plist # or logout/login
+
+LINUX:
+
+    * Use network manager to update when network location changes:
+
+        /path/to/cfdns --nm DOMAIN NAME > /etc/NetworkManager/dispatcher.d/99ddns
+        chmod +x /etc/NetworkManager/dispatcher.d/99ddns
+
+    * Use cron to check/update on a fixed schedule (lame):
+
+        */15 * * * * /path/to/cfdns --ddns DOMAIN NAME

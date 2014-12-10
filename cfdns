@@ -1,0 +1,217 @@
+#!/usr/bin/env python
+'''
+'''
+
+# Dynamic DNS with Cloudflare
+
+import json
+import os
+import sys
+from subprocess import check_output
+
+import requests
+
+URL = 'https://www.cloudflare.com/api_json.html'
+
+PLIST = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN"
+          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{0}.location_change</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>CLOUDFLARE_API</key>
+        <string>{1}</string>
+        <key>CLOUDFLARE_EMAIL</key>
+        <string>{2}</string>
+    </dict>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{3}/cfdns</string>
+        <string>--ddns</string>
+        <string>{4}</string>
+        <string>{5}</string>
+    </array>
+    <key>WatchPaths</key>
+    <array>
+        <string>/Library/Preferences/SystemConfiguration</string>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/var/log/{0}.location_change.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/{0}.location_change.log</string>
+</dict>
+</plist>
+'''
+
+NM_SCRIPT = '''
+#!/usr/bin/env bash
+
+export CLOUDFLARE_API={0}
+export CLOUDFLARE_EMAIL={1}
+[ "$2" = "up" ] && {2}/cfdns --ddns {3} {4} &
+'''
+
+def wan_ip():
+    return check_output(
+        ['dig', '+short', 'myip.opendns.com', '@resolver1.opendns.com']
+    ).strip()
+
+def get(params, headers=None):
+    if headers is None:
+        headers = {}
+    params['tkn'] = os.environ.get('CLOUDFLARE_API')
+    params['email'] = os.environ.get('CLOUDFLARE_EMAIL')
+    resp = requests.get(URL, headers=headers, params=params)
+    if resp.status_code == 200:
+        return resp.json()
+    return resp.content
+
+def post(data, headers=None):
+    if headers is None:
+        headers = {}
+    data['tkn'] = os.environ.get('CLOUDFLARE_API')
+    data['email'] = os.environ.get('CLOUDFLARE_EMAIL')
+    resp = requests.post(URL, headers=headers, data=json.dumps(data))
+    if resp.status_code == 200:
+        return resp.json()
+    return resp
+
+def get_records(domain, typ=None, name=None):
+    data = {'a': 'rec_load_all', 'z': domain}
+    resp = get(data)
+    try:
+        records = resp['response']['recs']['objs']
+    except Exception as ex:
+        print ex
+        yield resp
+    else:
+        for record in sorted(records, key=lambda x: x['name']):
+            if typ and record['type'] != typ:
+                continue
+            if name and record['display_name'] != name:
+                continue
+            yield record
+
+def create_record(domain, name, data):
+    data['a'] = 'rec_new'
+    data['z'] = domain
+    data['name'] = name
+    data['ttl'] = str(data['ttl']) if 'ttl' in data else '1'
+    resp = get(data)
+    try:
+        record = resp['response']['rec']['obj']
+        return '{0:20s} {1:>30s} {2:20s}'.format(
+            record['rec_id'],
+            record['name'],
+            record['content']
+        )
+    except Exception as ex:
+        print ex
+        return resp
+
+def update_record(domain, rec_id, data):
+    data['a'] = 'rec_edit'
+    data['z'] = domain
+    data['id'] = str(rec_id)
+    data['ttl'] = str(data['ttl']) if 'ttl' in data else '1'
+    resp = get(data)
+    try:
+        record = resp['response']['rec']['obj']
+        return '{0:20s} {1:>30s} {2:20s}'.format(
+            record['rec_id'],
+            record['name'],
+            record['content']
+        )
+    except Exception as ex:
+        print ex
+        return resp
+
+def delete_record(domain, rec_id):
+    data = {'a': 'rec_delete', 'z': domain, 'id': str(rec_id)}
+    resp = get(data)
+    return resp
+
+def print_records(domain, typ=None, name=None):
+    for record in get_records(domain, typ, name):
+        try:
+            print '{0:20s} {1:>30s} {2:20s}'.format(
+                record['rec_id'], record['name'], record['content']
+            )
+        except Exception as ex:
+            print ex
+            print record
+
+def ddns(domain, name, ip=None):
+    if ip is None:
+        ip = wan_ip()
+    recs = list(get_records(domain, 'A', name))
+    if recs:
+        for rec in recs:
+            if rec['content'] == ip:
+                continue
+            print update_record(domain, rec['rec_id'], {
+                'type': 'A',
+                'name': name,
+                'content': ip
+            })
+    else:
+        print create_record(domain, name, {'type': 'A', 'content': ip})
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=__doc__,
+    )
+    parser.add_argument(
+        '--ddns', nargs=2, metavar=('DOMAIN', 'NAME'),
+        help='update A record for NAME.DOMAIN'
+    )
+    parser.add_argument(
+        '--delete', metavar='ID', help='delete ID'
+    )
+    parser.add_argument(
+        '--list', metavar='DOMAIN', help='list A records for DOMAIN'
+    )
+    parser.add_argument(
+        '--plist', nargs=2, metavar=('DOMAIN', 'NAME'),
+        help='print launchd plist'
+    )
+    parser.add_argument(
+        '--nm', nargs=2, metavar=('DOMAIN', 'NAME'),
+        help='print networkmanager script'
+    )
+    args = parser.parse_args()
+
+    cwd = os.path.abspath(os.path.dirname(__file__))
+
+    if args.list:
+        print_records(args.list, 'A')
+    elif args.ddns:
+        ddns(args.ddns[0], args.ddns[1])
+    elif args.delete:
+        print delete_record(args.plist[0], args.plist[1])
+    elif args.plist:
+        print PLIST.format(
+            '.'.join(reversed(args.plist[0].split('.'))),
+            os.environ.get('CLOUDFLARE_API'),
+            os.environ.get('CLOUDFLARE_EMAIL'),
+            cwd,
+            args.plist[0],
+            args.plist[1],
+        ).strip()
+    elif args.nm:
+        print NM_SCRIPT.format(
+            os.environ.get('CLOUDFLARE_API'),
+            os.environ.get('CLOUDFLARE_EMAIL'),
+            cwd,
+            args.plist[0],
+            args.plist[1],
+        ).strip()
+    else:
+        parser.print_help()
