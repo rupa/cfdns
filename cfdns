@@ -5,7 +5,10 @@ Dynamic DNS with Cloudflare
 
 import json
 import os
+import sys
+
 from subprocess import check_output
+from time import sleep
 
 import requests
 
@@ -28,19 +31,22 @@ PLIST = '''
     </dict>
     <key>ProgramArguments</key>
     <array>
-        <string>{3}/cfdns</string>
+        <string>{3}</string>
+        <string>{4}/cfdns</string>
+        <string>--sleep</string>
+        <string>10</string>
         <string>--ddns</string>
-        <string>{4}</string>
         <string>{5}</string>
+        <string>{6}</string>
     </array>
     <key>WatchPaths</key>
     <array>
         <string>/Library/Preferences/SystemConfiguration</string>
     </array>
     <key>StandardOutPath</key>
-    <string>/var/log/{0}.location_change.log</string>
+    <string>{4}/{0}.location_change.log</string>
     <key>StandardErrorPath</key>
-    <string>/var/log/{0}.location_change.log</string>
+    <string>{4}/{0}.location_change.log</string>
 </dict>
 </plist>
 '''
@@ -50,7 +56,7 @@ NM_SCRIPT = '''
 
 export CLOUDFLARE_API={0}
 export CLOUDFLARE_EMAIL={1}
-[ "$2" = "up" ] && nohup {2}/cfdns --ddns {3} {4} &
+[ "$2" = "up" ] && nohup {2} {3}/cfdns --ddns {4} {5} &
 '''
 
 def wan_ip():
@@ -144,9 +150,9 @@ def print_records(domain, typ=None, name=None):
             print record
 
 def ddns(domain, name, ip=None):
+    recs = list(get_records(domain, 'A', name))
     if ip is None:
         ip = wan_ip()
-    recs = list(get_records(domain, 'A', name))
     if recs:
         for rec in recs:
             if rec['content'] == ip:
@@ -195,9 +201,15 @@ if __name__ == '__main__':
         metavar=('DOMAIN', 'NAME'),
         help='print networkmanager script'
     )
+    parser.add_argument(
+        '--sleep',
+        type=int,
+        metavar='SECONDS',
+        help='sleep after running command (for launchcd)'
+    )
     args = parser.parse_args()
 
-    cwd = os.path.abspath(os.path.dirname(__file__))
+    cwd = os.path.split(os.path.abspath(os.path.realpath(sys.argv[0])))[0]
 
     no_args = True
     if args.delete:
@@ -215,6 +227,7 @@ if __name__ == '__main__':
             '.'.join(reversed(args.plist[0].split('.'))),
             os.environ.get('CLOUDFLARE_API'),
             os.environ.get('CLOUDFLARE_EMAIL'),
+            sys.executable,
             cwd,
             args.plist[0],
             args.plist[1],
@@ -224,10 +237,13 @@ if __name__ == '__main__':
         print NM_SCRIPT.format(
             os.environ.get('CLOUDFLARE_API'),
             os.environ.get('CLOUDFLARE_EMAIL'),
+            sys.executable,
             cwd,
             args.nm[0],
             args.nm[1],
         ).strip()
+    if args.sleep:
+        sleep(args.sleep)
 
     if no_args:
         parser.print_help()
