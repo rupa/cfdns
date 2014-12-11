@@ -205,7 +205,7 @@ if __name__ == '__main__':
         '--sleep',
         type=int,
         metavar='SECONDS',
-        help='sleep after running command (for launchcd)'
+        help='sleep before running --ddns (chiefly for launchcd)'
     )
     args = parser.parse_args()
 
@@ -216,6 +216,13 @@ if __name__ == '__main__':
         no_args = False
         print delete_record(args.delete[0], args.delete[1])
     if args.ddns:
+        if args.sleep:
+            # Apparently launchd considers a process that ends in under 10
+            # seconds to have failed. And we want to stay on its good side.
+            # Also, launchd plist seems to run just a smidge early and we tend
+            # to crap out with a connection error if we just go ahead. So let's
+            # just sleep a while here, before we do anything.
+            sleep(args.sleep)
         no_args = False
         ddns(args.ddns[0], args.ddns[1])
     if args.list:
@@ -242,8 +249,6 @@ if __name__ == '__main__':
             args.nm[0],
             args.nm[1],
         ).strip()
-    if args.sleep:
-        sleep(args.sleep)
 
     if no_args:
         parser.print_help()
