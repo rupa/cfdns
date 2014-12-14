@@ -58,7 +58,17 @@ NM_SCRIPT = '''
 
 export CLOUDFLARE_API={0}
 export CLOUDFLARE_EMAIL={1}
-[ "$2" = "up" ] && nohup {2} {3}/cfdns --ddns {4} {5} &
+[ "$2" = "up" -a "$1" != "lo" ] && nohup {2} {3}/cfdns --ddns {4} {5} &
+'''
+
+IFUPD_SCRIPT = '''
+#!/usr/bin/env bash
+
+export CLOUDFLARE_API={0}
+export CLOUDFLARE_EMAIL={1}
+[ "$MODE" = "start" -a "$IFACE" != "lo" ] && {{
+    nohup {2} {3}/cfdns --ddns {4} {5} &
+}}
 '''
 
 def wan_ip():
@@ -201,7 +211,13 @@ if __name__ == '__main__':
         '--nm',
         nargs=2,
         metavar=('DOMAIN', 'NAME'),
-        help='print networkmanager script'
+        help='print /etc/NetworkManager/dispatcher.d/ script'
+    )
+    parser.add_argument(
+        '--ifupd',
+        nargs=2,
+        metavar=('DOMAIN', 'NAME'),
+        help='print /etc/network/if-up.d/ script'
     )
     parser.add_argument(
         '--sleep',
@@ -230,6 +246,7 @@ if __name__ == '__main__':
     if args.list:
         no_args = False
         print_records(args.list, 'A')
+
     if args.plist:
         no_args = False
         print PLIST.format(
@@ -250,6 +267,16 @@ if __name__ == '__main__':
             cwd,
             args.nm[0],
             args.nm[1],
+        ).strip()
+    if args.ifupd:
+        no_args = False
+        print IFUPD_SCRIPT.format(
+            os.environ.get('CLOUDFLARE_API'),
+            os.environ.get('CLOUDFLARE_EMAIL'),
+            sys.executable,
+            cwd,
+            args.ifupd[0],
+            args.ifupd[1],
         ).strip()
 
     if no_args:
