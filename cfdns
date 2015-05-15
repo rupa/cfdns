@@ -8,10 +8,13 @@ import os
 import sys
 
 from subprocess import check_output
+from time import sleep
 
 import requests
 
 URL = 'https://www.cloudflare.com/api_json.html'
+
+TIMEOUT = 10
 
 PLIST = '''
 <?xml version="1.0" encoding="UTF-8"?>
@@ -30,19 +33,22 @@ PLIST = '''
     </dict>
     <key>ProgramArguments</key>
     <array>
-        <string>{3}/cfdns</string>
+        <string>{3}</string>
+        <string>{4}/cfdns</string>
+        <string>--sleep</string>
+        <string>10</string>
         <string>--ddns</string>
-        <string>{4}</string>
         <string>{5}</string>
+        <string>{6}</string>
     </array>
     <key>WatchPaths</key>
     <array>
         <string>/Library/Preferences/SystemConfiguration</string>
     </array>
     <key>StandardOutPath</key>
-    <string>/var/log/{0}.location_change.log</string>
+    <string>{4}/{0}.location_change.log</string>
     <key>StandardErrorPath</key>
-    <string>/var/log/{0}.location_change.log</string>
+    <string>{4}/{0}.location_change.log</string>
 </dict>
 </plist>
 '''
@@ -52,7 +58,17 @@ NM_SCRIPT = '''
 
 export CLOUDFLARE_API={0}
 export CLOUDFLARE_EMAIL={1}
-[ "$2" = "up" ] && nohup {2}/cfdns --ddns {3} {4} &
+[ "$2" = "up" -a "$1" != "lo" ] && nohup {2} {3}/cfdns --ddns {4} {5} &
+'''
+
+IFUPD_SCRIPT = '''
+#!/usr/bin/env bash
+
+export CLOUDFLARE_API={0}
+export CLOUDFLARE_EMAIL={1}
+[ "$MODE" = "start" -a "$IFACE" != "lo" ] && {{
+    nohup {2} {3}/cfdns --ddns {4} {5} &
+}}
 '''
 
 def wan_ip():
@@ -65,7 +81,7 @@ def get(params, headers=None):
         headers = {}
     params['tkn'] = os.environ.get('CLOUDFLARE_API')
     params['email'] = os.environ.get('CLOUDFLARE_EMAIL')
-    resp = requests.get(URL, headers=headers, params=params)
+    resp = requests.get(URL, headers=headers, params=params, timeout=TIMEOUT)
     if resp.status_code == 200:
         resp = resp.json()
         if 'msg' in resp and resp['msg']:
@@ -78,7 +94,7 @@ def post(data, headers=None):
         headers = {}
     data['tkn'] = os.environ.get('CLOUDFLARE_API')
     data['email'] = os.environ.get('CLOUDFLARE_EMAIL')
-    resp = requests.post(URL, headers=headers, data=json.dumps(data))
+    resp = requests.post(URL, headers=headers, data=data, timeout=TIMEOUT)
     if resp.status_code == 200:
         resp = resp.json()
         if 'msg' in resp and resp['msg']:
@@ -154,9 +170,9 @@ def print_records(domain, typ=None, name=None):
             print record
 
 def ddns(domain, name, ip=None):
+    recs = list(get_records(domain, 'A', name))
     if ip is None:
         ip = wan_ip()
-    recs = list(get_records(domain, 'A', name))
     if recs:
         for rec in recs:
             if rec['content'] == ip:
@@ -203,28 +219,49 @@ if __name__ == '__main__':
         '--nm',
         nargs=2,
         metavar=('DOMAIN', 'NAME'),
-        help='print networkmanager script'
+        help='print /etc/NetworkManager/dispatcher.d/ script'
+    )
+    parser.add_argument(
+        '--ifupd',
+        nargs=2,
+        metavar=('DOMAIN', 'NAME'),
+        help='print /etc/network/if-up.d/ script'
+    )
+    parser.add_argument(
+        '--sleep',
+        type=int,
+        metavar='SECONDS',
+        help='sleep before running --ddns (chiefly for launchcd)'
     )
     args = parser.parse_args()
 
-    cwd = os.path.abspath(os.path.dirname(__file__))
+    cwd = os.path.split(os.path.abspath(os.path.realpath(sys.argv[0])))[0]
 
     no_args = True
     if args.delete:
         no_args = False
         print delete_record(args.delete[0], args.delete[1])
     if args.ddns:
+        if args.sleep:
+            # Apparently launchd considers a process that ends in under 10
+            # seconds to have failed. And we want to stay on its good side.
+            # Also, launchd plist seems to run just a smidge early and we tend
+            # to crap out with a connection error if we just go ahead. So let's
+            # just sleep a while here, before we do anything.
+            sleep(args.sleep)
         no_args = False
         ddns(args.ddns[0], args.ddns[1])
     if args.list:
         no_args = False
         print_records(args.list, 'A')
+
     if args.plist:
         no_args = False
         print PLIST.format(
             '.'.join(reversed(args.plist[0].split('.'))),
             os.environ.get('CLOUDFLARE_API'),
             os.environ.get('CLOUDFLARE_EMAIL'),
+            sys.executable,
             cwd,
             args.plist[0],
             args.plist[1],
@@ -234,9 +271,20 @@ if __name__ == '__main__':
         print NM_SCRIPT.format(
             os.environ.get('CLOUDFLARE_API'),
             os.environ.get('CLOUDFLARE_EMAIL'),
+            sys.executable,
             cwd,
             args.nm[0],
             args.nm[1],
+        ).strip()
+    if args.ifupd:
+        no_args = False
+        print IFUPD_SCRIPT.format(
+            os.environ.get('CLOUDFLARE_API'),
+            os.environ.get('CLOUDFLARE_EMAIL'),
+            sys.executable,
+            cwd,
+            args.ifupd[0],
+            args.ifupd[1],
         ).strip()
 
     if no_args:

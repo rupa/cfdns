@@ -3,6 +3,11 @@ Dynamic DNS with Cloudflare
 Have a domain pointed at Cloudflare nameservers.
 Have API key and email exported as CLOUDFLARE_API and CLOUDFLARE_EMAIL.
 
+Requirements:
+
+    * python
+    * requests
+
 OSX:
 
     * Use launchd to trigger update when network location changes:
