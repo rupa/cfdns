@@ -5,7 +5,7 @@ Have API key and email exported as CLOUDFLARE_API and CLOUDFLARE_EMAIL.
 
 Requirements:
 
-    * python
+    * python (2)
     * requests
 
 OSX:
@@ -17,7 +17,7 @@ OSX:
 
 LINUX:
 
-    * Use network manager to update when network location changes:
+    * Use network manager to update when network location changes (sweet):
 
         /path/to/cfdns --nm DOMAIN NAME > /etc/NetworkManager/dispatcher.d/99ddns
         chmod +x /etc/NetworkManager/dispatcher.d/99ddns
