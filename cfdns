@@ -7,6 +7,8 @@ import json
 import os
 import sys
 
+from datetime import datetime
+from socket import gethostbyname, gethostname
 from subprocess import check_output
 from time import sleep
 
@@ -36,10 +38,10 @@ PLIST = '''
         <string>{3}</string>
         <string>{4}/cfdns</string>
         <string>--sleep</string>
-        <string>10</string>
+        <string>10</string>{5}
         <string>--ddns</string>
-        <string>{5}</string>
         <string>{6}</string>
+        <string>{7}</string>
     </array>
     <key>WatchPaths</key>
     <array>
@@ -58,7 +60,7 @@ NM_SCRIPT = '''
 
 export CLOUDFLARE_API={0}
 export CLOUDFLARE_EMAIL={1}
-[ "$2" = "up" -a "$1" != "lo" ] && nohup {2} {3}/cfdns --ddns {4} {5} &
+[ "$2" = "up" -a "$1" != "lo" ] && nohup {2} {3}/cfdns {4}--ddns {5} {5} &
 '''
 
 IFUPD_SCRIPT = '''
@@ -67,9 +69,25 @@ IFUPD_SCRIPT = '''
 export CLOUDFLARE_API={0}
 export CLOUDFLARE_EMAIL={1}
 [ "$MODE" = "start" -a "$IFACE" != "lo" ] && {{
-    nohup {2} {3}/cfdns --ddns {4} {5} &
+    nohup {2} {3}/cfdns {4}--ddns {5} {6} &
 }}
 '''
+
+def ssid():
+    if sys.platform == 'darwin':
+        info = {}
+        for x in check_output([
+            '/System/Library/PrivateFrameworks/Apple80211.framework'
+            '/Versions/Current/Resources/airport',
+            '-I'
+        ]).split('\n'):
+            if x:
+                k, v = x.split(':', 1)
+                info[k.strip()] = v.strip()
+        return info['SSID']
+
+def lan_ip():
+    return gethostbyname(gethostname())
 
 def wan_ip():
     return check_output(
@@ -161,7 +179,13 @@ def print_records(domain, typ=None, name=None):
             print ex
             print record
 
-def ddns(domain, name, ip=None):
+def ddns(domain, name, ip=None, logfile=None, ttl=300):
+    def log():
+        if logfile:
+            with open(logfile, 'a') as fh:
+                fh.write('{0} {1} {2} {3}\n'.format(
+                    datetime.now(), ssid(), lan_ip(), ip
+                ))
     recs = list(get_records(domain, 'A', name))
     if ip is None:
         ip = wan_ip()
@@ -172,10 +196,13 @@ def ddns(domain, name, ip=None):
             print update_record(domain, rec['rec_id'], {
                 'type': 'A',
                 'name': name,
-                'content': ip
+                'content': ip,
+                'ttl': ttl,
             })
+            log()
     else:
         print create_record(domain, name, {'type': 'A', 'content': ip})
+        log()
 
 if __name__ == '__main__':
     import argparse
@@ -202,6 +229,10 @@ if __name__ == '__main__':
         help='list A records for DOMAIN'
     )
     parser.add_argument(
+        '--logfile',
+        help='log ddns updates in LOGFILE'
+    )
+    parser.add_argument(
         '--plist',
         nargs=2,
         metavar=('DOMAIN', 'NAME'),
@@ -223,7 +254,7 @@ if __name__ == '__main__':
         '--sleep',
         type=int,
         metavar='SECONDS',
-        help='sleep before running --ddns (chiefly for launchcd)'
+        help='sleep before running --ddns (chiefly for launchd)'
     )
     args = parser.parse_args()
 
@@ -242,11 +273,10 @@ if __name__ == '__main__':
             # just sleep a while here, before we do anything.
             sleep(args.sleep)
         no_args = False
-        ddns(args.ddns[0], args.ddns[1])
+        ddns(args.ddns[0], args.ddns[1], logfile=args.logfile)
     if args.list:
         no_args = False
         print_records(args.list, 'A')
-
     if args.plist:
         no_args = False
         print PLIST.format(
@@ -255,6 +285,10 @@ if __name__ == '__main__':
             os.environ.get('CLOUDFLARE_EMAIL'),
             sys.executable,
             cwd,
+            '''
+        <string>--logfile</string>
+        <string>{0}</string>
+            '''.format(args.logfile).rstrip() if args.logfile else '',
             args.plist[0],
             args.plist[1],
         ).strip()
@@ -265,6 +299,7 @@ if __name__ == '__main__':
             os.environ.get('CLOUDFLARE_EMAIL'),
             sys.executable,
             cwd,
+            '--logfile "{0}" '.format(args.logfile) if args.logfile else '',
             args.nm[0],
             args.nm[1],
         ).strip()
@@ -275,6 +310,7 @@ if __name__ == '__main__':
             os.environ.get('CLOUDFLARE_EMAIL'),
             sys.executable,
             cwd,
+            '--logfile "{0}" '.format(args.logfile) if args.logfile else '',
             args.ifupd[0],
             args.ifupd[1],
         ).strip()
