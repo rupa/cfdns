@@ -204,7 +204,7 @@ def ddns(domain, name, ip=None, logfile=None, ttl=300):
         print create_record(domain, name, {'type': 'A', 'content': ip})
         log()
 
-if __name__ == '__main__':
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -317,3 +317,6 @@ if __name__ == '__main__':
 
     if no_args:
         parser.print_help()
+
+if __name__ == '__main__':
+    main()
