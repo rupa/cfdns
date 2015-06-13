@@ -101,7 +101,10 @@ def get(params, headers=None):
     params['email'] = os.environ.get('CLOUDFLARE_EMAIL')
     resp = requests.get(URL, headers=headers, params=params, timeout=TIMEOUT)
     if resp.status_code == 200:
-        return resp.json()
+        resp = resp.json()
+        if 'msg' in resp and resp['msg']:
+            sys.stderr.write('ERROR: {0}\n'.format(resp.msg))
+        return resp
     return resp.content
 
 def post(data, headers=None):
@@ -111,7 +114,9 @@ def post(data, headers=None):
     data['email'] = os.environ.get('CLOUDFLARE_EMAIL')
     resp = requests.post(URL, headers=headers, data=data, timeout=TIMEOUT)
     if resp.status_code == 200:
-        return resp.json()
+        resp = resp.json()
+        if 'msg' in resp and resp['msg']:
+            sys.stderr.write('ERROR: {0}\n'.format(resp.msg))
     return resp
 
 def get_records(domain, typ=None, name=None):
@@ -172,8 +177,11 @@ def delete_record(domain, rec_id):
 def print_records(domain, typ=None, name=None):
     for record in get_records(domain, typ, name):
         try:
-            print '{0:20s} {1:>30s} {2:20s}'.format(
-                record['rec_id'], record['name'], record['content']
+            print '{0:15s} {1:>25s} {2:20s} {3:10s}'.format(
+                record['rec_id'],
+                record['name'],
+                record['content'],
+                record['ttl']
             )
         except Exception as ex:
             print ex
