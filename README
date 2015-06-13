@@ -8,6 +8,14 @@ Requirements:
     * python
     * requests
 
+Install:
+    git clone git://github.com/rupa/cfdns.git
+    cd cfdns
+    python setup.py sdist
+    pip install dist/cfdns-0.1.tar.gz
+
+    cfdns module and script will be available
+
 OSX:
 
     * Use launchd to trigger update when network location changes:
