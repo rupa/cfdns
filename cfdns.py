@@ -230,7 +230,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--logfile',
-        help='log ddns updates in LOGFILE'
+        help='log ddns updates from script in LOGFILE (absolute path)'
     )
     parser.add_argument(
         '--plist',
