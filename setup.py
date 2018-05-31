@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='cfdns',
-    version='0.1',
+    version='0.2',
     description='dynamic DNS with cloudflare',
     url='http://github.com/rupa/cfdns',
     author='rupa',

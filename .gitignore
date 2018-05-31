@@ -1,0 +1,3 @@
+*.pyc
+cfdns.egg-info/
+dist/
